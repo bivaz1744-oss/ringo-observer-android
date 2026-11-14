@@ -3,6 +3,12 @@ package com.ringoai.sixone;
 import android.app.*;
 import android.content.*;
 import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
+import android.view.WindowManager;
+import android.widget.TextView;
 import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
@@ -27,6 +33,8 @@ public class ScreenOcrService extends Service {
     private VirtualDisplay display;
     private ImageReader reader;
     private TextRecognizer recognizer;
+    private WindowManager windowManager;
+    private TextView floatingPanel;
     private final AtomicBoolean processing = new AtomicBoolean(false);
     private int stableCandidate = -1;
     private int stableCount = 0;
@@ -67,6 +75,7 @@ public class ScreenOcrService extends Service {
         int width = getResources().getDisplayMetrics().widthPixels;
         int height = getResources().getDisplayMetrics().heightPixels;
         int density = getResources().getDisplayMetrics().densityDpi;
+        showFloatingPanel();
         reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2);
         reader.setOnImageAvailableListener(source -> {
             Image image = null;
@@ -91,6 +100,34 @@ public class ScreenOcrService extends Service {
         }, new Handler(Looper.getMainLooper()));
         display = projection.createVirtualDisplay("RingoOCR", width, height, density,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, reader.getSurface(), null, null);
+    }
+
+    private void showFloatingPanel() {
+        try {
+            if (Build.VERSION.SDK_INT >= 23 && !android.provider.Settings.canDrawOverlays(this)) return;
+            windowManager = (WindowManager)getSystemService(WINDOW_SERVICE);
+            floatingPanel = new TextView(this);
+            floatingPanel.setText("RINGO AI 6.4\nРаспознавание включено");
+            floatingPanel.setTextColor(Color.WHITE);
+            floatingPanel.setTextSize(13);
+            floatingPanel.setTypeface(null, Typeface.BOLD);
+            floatingPanel.setPadding(18, 12, 18, 12);
+            GradientDrawable bg = new GradientDrawable();
+            bg.setColor(0xE6202B3D);
+            bg.setCornerRadius(24);
+            floatingPanel.setBackground(bg);
+            int type = Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_PHONE;
+            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+                    type, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                    PixelFormat.TRANSLUCENT);
+            params.gravity = Gravity.TOP | Gravity.START;
+            params.x = 24; params.y = 120;
+            windowManager.addView(floatingPanel, params);
+        } catch (Exception ignored) { floatingPanel = null; }
+    }
+    private void updateFloatingPanel(int number) {
+        if (floatingPanel != null) floatingPanel.post(() -> floatingPanel.setText("RINGO AI 6.4\nРаспознано: " + number + "\nИстория сохраняется"));
     }
 
     private void handleText(Text text) {
@@ -118,6 +155,7 @@ public class ScreenOcrService extends Service {
         // Требуем три последовательных совпадения OCR, чтобы уменьшить случайные срабатывания.
         if (stableCount >= 3 && candidate != lastSent) {
             lastSent = candidate;
+            updateFloatingPanel(candidate);
             Intent broadcast = new Intent(ACTION_NUMBER);
             broadcast.setPackage(getPackageName());
             broadcast.putExtra("number", candidate);
@@ -126,6 +164,7 @@ public class ScreenOcrService extends Service {
     }
 
     @Override public void onDestroy() {
+        if (floatingPanel != null && windowManager != null) { try { windowManager.removeView(floatingPanel); } catch (Exception ignored) {} }
         if (display != null) display.release();
         if (reader != null) reader.close();
         if (projection != null) projection.stop();
