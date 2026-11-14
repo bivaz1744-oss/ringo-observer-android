@@ -3,12 +3,12 @@ package com.ringoai.sixone;
 import android.app.Activity;
 import android.os.Bundle;
 import android.graphics.Typeface;
-import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
 import android.content.SharedPreferences;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class MainActivity extends Activity {
     private SharedPreferences prefs;
@@ -17,17 +17,21 @@ public class MainActivity extends Activity {
     private EditText stakeInput, resultInput;
     private int balance, wins, losses, rounds;
     private int pendingNumber = -1, pendingStake = 0;
-    private final List<String> history = new ArrayList<>();
+    private final List<Integer> history = new ArrayList<>();
+    private static final int MAX_NUMBER = 36;
+    private static final int OUTCOMES = 37;
+    private static final double DEMO_MULTIPLIER = 5.2; // пример коэффициента из ранее предоставленных пользователем результатов
 
     @Override public void onCreate(Bundle saved) {
         super.onCreate(saved);
-        prefs = getSharedPreferences("ringo61", MODE_PRIVATE);
+        prefs = getSharedPreferences("ringo62", MODE_PRIVATE);
         balance = prefs.getInt("balance", 1000);
         wins = prefs.getInt("wins", 0);
         losses = prefs.getInt("losses", 0);
         rounds = prefs.getInt("rounds", 0);
         pendingNumber = prefs.getInt("pendingNumber", -1);
         pendingStake = prefs.getInt("pendingStake", 0);
+        loadHistory();
         buildUi();
         refresh();
     }
@@ -40,10 +44,10 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(0xFFF4F6FA);
         scroll.addView(root);
 
-        TextView title = text("RINGO AI 6.1", 27, true);
+        TextView title = text("RINGO AI 6.2", 27, true);
         title.setTextColor(0xFF18243A);
         root.addView(title);
-        TextView subtitle = text("ДЕМО-ТРЕНАЖЁР • ТОЛЬКО ВИРТУАЛЬНЫЕ СТАВКИ", 12, true);
+        TextView subtitle = text("ДЕМО-НАБЛЮДАТЕЛЬ • 0–36 • 37 РЕЗУЛЬТАТОВ", 12, true);
         subtitle.setTextColor(0xFF53627A);
         root.addView(subtitle);
 
@@ -51,10 +55,10 @@ public class MainActivity extends Activity {
         balanceView.setTextColor(0xFF146C43);
         addGap(root, 12); root.addView(balanceView);
 
-        root.addView(text("1. Выбери число (0–33)", 17, true));
+        root.addView(text("1. Выбери число (0–36)", 17, true));
         numberSpinner = new Spinner(this);
-        String[] nums = new String[34];
-        for (int i=0;i<34;i++) nums[i] = String.valueOf(i);
+        String[] nums = new String[OUTCOMES];
+        for (int i=0;i<OUTCOMES;i++) nums[i] = String.valueOf(i);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, nums);
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         numberSpinner.setAdapter(adapter);
@@ -77,7 +81,7 @@ public class MainActivity extends Activity {
         resultInput = new EditText(this);
         resultInput.setInputType(2);
         resultInput.setSingleLine(true);
-        resultInput.setHint("Результат от 0 до 33");
+        resultInput.setHint("Результат от 0 до 36");
         root.addView(resultInput);
         Button result = button("Сохранить результат и рассчитать");
         root.addView(result);
@@ -104,7 +108,7 @@ public class MainActivity extends Activity {
         root.addView(reset);
         reset.setOnClickListener(v -> resetDemo());
 
-        TextView note = text("Важно: приложение не подключается к Ringo/Buleto, не размещает реальные ставки и не гарантирует прогнозы. Результаты вводятся вручную. Статистика прошлых раундов не предсказывает случайный следующий результат.", 12, false);
+        TextView note = text("Важно: версия 6.2 пока не подключается к Buleto и не считывает экран автоматически. Результаты пока вводятся вручную. Частота чисел не позволяет надёжно предсказать следующий случайный результат. Ставки только виртуальные.", 12, false);
         note.setTextColor(0xFF68758A);
         addGap(root, 12); root.addView(note);
         setContentView(scroll);
@@ -139,15 +143,16 @@ public class MainActivity extends Activity {
     private void recordResult() {
         int result;
         try { result = Integer.parseInt(resultInput.getText().toString().trim()); }
-        catch (Exception e) { toast("Введи результат от 0 до 33."); return; }
-        if (result < 0 || result > 33) { toast("Допустимы только числа от 0 до 33."); return; }
+        catch (Exception e) { toast("Введи результат от 0 до 36."); return; }
+        if (result < 0 || result > MAX_NUMBER) { toast("Допустимы только числа от 0 до 36."); return; }
         rounds++;
-        history.add(0, "Раунд " + rounds + ": " + result + (pendingNumber >= 0 ? " | выбор " + pendingNumber : ""));
+        history.add(0, result);
+        if (history.size() > 500) history.remove(history.size()-1);
         if (pendingNumber >= 0) {
             if (result == pendingNumber) {
-                int payout = pendingStake * 34;
+                int payout = (int)Math.round(pendingStake * DEMO_MULTIPLIER);
                 balance += payout; wins++;
-                statusView.setText("Совпадение! Виртуальное начисление: " + payout + ".");
+                statusView.setText("Совпадение! Демо-начисление по условному коэффициенту 5,2: " + payout + ".");
             } else {
                 losses++;
                 statusView.setText("Не совпало. Виртуальная ставка проиграна.");
@@ -164,17 +169,33 @@ public class MainActivity extends Activity {
         int settled = wins + losses;
         double accuracy = settled == 0 ? 0 : (wins * 100.0 / settled);
         statsView.setText("Раундов записано: " + rounds + "\nУгадано: " + wins + "\nНе угадано: " + losses +
-                "\nТочность среди виртуальных ставок: " + String.format(java.util.Locale.US, "%.1f", accuracy) + "%" +
+                "\nТочность среди виртуальных ставок: " + String.format(Locale.US, "%.1f", accuracy) + "%" +
                 "\nОжидающая ставка: " + (pendingNumber < 0 ? "нет" : ("число " + pendingNumber + ", сумма " + pendingStake)));
-        adviceView.setText("Подсказка: каждый раунд независим, если игра использует случайный выбор. Частые/редкие числа в истории не дают надёжного прогноза следующего результата.");
+        int[] counts = new int[OUTCOMES];
+        for (int n : history) if (n >= 0 && n <= MAX_NUMBER) counts[n]++;
+        int least = 0;
+        for (int i=1;i<OUTCOMES;i++) if (counts[i] < counts[least]) least = i;
+        adviceView.setText("Частоты по сохранённой истории: " + history.size() + " результатов. Реже всего встречалось число " + least +
+                " (" + counts[least] + " раз). Это только статистика прошлого, НЕ прогноз: при случайных независимых раундах у всех 37 чисел одинаковый шанс.");
         StringBuilder h = new StringBuilder();
-        for (int i=0;i<history.size() && i<20;i++) h.append(history.get(i)).append("\n");
+        for (int i=0;i<history.size() && i<100;i++) h.append("Раунд ").append(rounds-i).append(": ").append(history.get(i)).append("\n");
         historyView.setText(h.length()==0 ? "Пока нет результатов" : h.toString());
     }
+    private void loadHistory() {
+        String saved = prefs.getString("history", "");
+        if (saved == null || saved.isEmpty()) return;
+        String[] values = saved.split(",");
+        for (String value : values) {
+            try { int n = Integer.parseInt(value); if (n >= 0 && n <= MAX_NUMBER) history.add(n); }
+            catch (Exception ignored) { }
+        }
+    }
     private void save() {
+        StringBuilder data = new StringBuilder();
+        for (int n : history) { if (data.length() > 0) data.append(","); data.append(n); }
         prefs.edit().putInt("balance",balance).putInt("wins",wins).putInt("losses",losses)
                 .putInt("rounds",rounds).putInt("pendingNumber",pendingNumber)
-                .putInt("pendingStake",pendingStake).apply();
+                .putInt("pendingStake",pendingStake).putString("history",data.toString()).apply();
     }
     private void resetDemo() {
         balance=1000; wins=0; losses=0; rounds=0; pendingNumber=-1; pendingStake=0; history.clear();
