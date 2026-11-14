@@ -17,8 +17,6 @@ import com.google.mlkit.vision.text.TextRecognition;
 import com.google.mlkit.vision.text.TextRecognizer;
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 import java.nio.ByteBuffer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ScreenOcrService extends Service {
@@ -30,8 +28,10 @@ public class ScreenOcrService extends Service {
     private ImageReader reader;
     private TextRecognizer recognizer;
     private final AtomicBoolean processing = new AtomicBoolean(false);
+    private int stableCandidate = -1;
+    private int stableCount = 0;
+    private int emptyCount = 0;
     private int lastSent = -1;
-    private long lastSentAt = 0;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -104,9 +104,17 @@ public class ScreenOcrService extends Service {
                 }
             }
         }
-        long now = System.currentTimeMillis();
-        if (candidate >= 0 && (candidate != lastSent || now - lastSentAt > 8000)) {
-            lastSent = candidate; lastSentAt = now;
+        if (candidate < 0) {
+            emptyCount++;
+            if (emptyCount >= 3) { stableCandidate = -1; stableCount = 0; lastSent = -1; }
+            return;
+        }
+        emptyCount = 0;
+        if (candidate == stableCandidate) stableCount++;
+        else { stableCandidate = candidate; stableCount = 1; }
+        // Требуем три последовательных совпадения OCR, чтобы уменьшить случайные срабатывания.
+        if (stableCount >= 3 && candidate != lastSent) {
+            lastSent = candidate;
             Intent broadcast = new Intent(ACTION_NUMBER);
             broadcast.setPackage(getPackageName());
             broadcast.putExtra("number", candidate);
