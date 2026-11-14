@@ -10,7 +10,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.IntentFilter;
 import android.media.projection.MediaProjectionManager;
-import android.app.Activity;
 import android.content.SharedPreferences;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +20,10 @@ public class MainActivity extends Activity {
     private TextView balanceView, statsView, statusView, historyView, adviceView;
     private Spinner numberSpinner;
     private EditText stakeInput, resultInput;
-    private int balance, wins, losses, rounds;\n    private int lastOcrNumber = -1;\n    private static final int CAPTURE_REQUEST = 620;\n    private BroadcastReceiver ocrReceiver;
+    private int balance, wins, losses, rounds;
+    private int lastOcrNumber = -1;
+    private static final int CAPTURE_REQUEST = 620;
+    private BroadcastReceiver ocrReceiver;
     private int pendingNumber = -1, pendingStake = 0;
     private final List<Integer> history = new ArrayList<>();
     private static final int MAX_NUMBER = 36;
@@ -42,7 +44,44 @@ public class MainActivity extends Activity {
         refresh();
     }
 
-    private void registerOcrReceiver() {\n        ocrReceiver = new BroadcastReceiver() {\n            @Override public void onReceive(Context context, Intent intent) {\n                int n = intent.getIntExtra("number", -1);\n                if (n >= 0 && n <= 36 && n != lastOcrNumber) {\n                    lastOcrNumber = n;\n                    statusView.setText("Распознано на экране число " + n + ". Нажми «Сохранить найденное число», чтобы записать результат.");\n                }\n            }\n        };\n        IntentFilter filter = new IntentFilter(ScreenOcrService.ACTION_NUMBER);\n        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(ocrReceiver, filter, Context.RECEIVER_NOT_EXPORTED);\n        else registerReceiver(ocrReceiver, filter);\n    }\n    private void startScreenReader() {\n        MediaProjectionManager manager = (MediaProjectionManager)getSystemService(MEDIA_PROJECTION_SERVICE);\n        startActivityForResult(manager.createScreenCaptureIntent(), CAPTURE_REQUEST);\n    }\n    private void stopScreenReader() {\n        Intent i = new Intent(this, ScreenOcrService.class); i.setAction(ScreenOcrService.ACTION_STOP); startService(i);\n        toast("Распознавание остановлено.");\n    }\n    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {\n        super.onActivityResult(requestCode, resultCode, data);\n        if (requestCode == CAPTURE_REQUEST) {\n            if (resultCode == RESULT_OK && data != null) {\n                Intent service = new Intent(this, ScreenOcrService.class);\n                service.putExtra("resultCode", resultCode); service.putExtra("data", data);\n                if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(service); else startService(service);\n                toast("Распознавание экрана включено. Открой Buleto и покажи результат раунда.");\n            } else toast("Разрешение на запись экрана не предоставлено.");\n        }\n    }\n    @Override protected void onDestroy() {\n        if (ocrReceiver != null) { try { unregisterReceiver(ocrReceiver); } catch (Exception ignored) {} }\n        super.onDestroy();\n    }\n    private void buildUi() {
+    private void registerOcrReceiver() {
+        ocrReceiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                int n = intent.getIntExtra("number", -1);
+                if (n >= 0 && n <= 36 && n != lastOcrNumber) {
+                    lastOcrNumber = n;
+                    statusView.setText("Распознано на экране число " + n + ". Нажми «Сохранить найденное число», чтобы записать результат.");
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter(ScreenOcrService.ACTION_NUMBER);
+        if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(ocrReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        else registerReceiver(ocrReceiver, filter);
+    }
+    private void startScreenReader() {
+        MediaProjectionManager manager = (MediaProjectionManager)getSystemService(MEDIA_PROJECTION_SERVICE);
+        startActivityForResult(manager.createScreenCaptureIntent(), CAPTURE_REQUEST);
+    }
+    private void stopScreenReader() {
+        Intent i = new Intent(this, ScreenOcrService.class); i.setAction(ScreenOcrService.ACTION_STOP); startService(i);
+        toast("Распознавание остановлено.");
+    }
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == CAPTURE_REQUEST) {
+            if (resultCode == RESULT_OK && data != null) {
+                Intent service = new Intent(this, ScreenOcrService.class);
+                service.putExtra("resultCode", resultCode); service.putExtra("data", data);
+                if (android.os.Build.VERSION.SDK_INT >= 26) startForegroundService(service); else startService(service);
+                toast("Распознавание экрана включено. Открой Buleto и покажи результат раунда.");
+            } else toast("Разрешение на запись экрана не предоставлено.");
+        }
+    }
+    @Override protected void onDestroy() {
+        if (ocrReceiver != null) { try { unregisterReceiver(ocrReceiver); } catch (Exception ignored) {} }
+        super.onDestroy();
+    }
+    private void buildUi() {
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
