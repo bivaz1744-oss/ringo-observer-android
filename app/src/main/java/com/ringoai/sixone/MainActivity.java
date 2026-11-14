@@ -49,7 +49,7 @@ public class MainActivity extends Activity {
         ocrReceiver = new BroadcastReceiver() {
             @Override public void onReceive(Context context, Intent intent) {
                 int n = intent.getIntExtra("number", -1);
-                if (n >= 0 && n <= 36 && n != lastOcrNumber) {
+                if (n >= 0 && n <= 36) {
                     lastOcrNumber = n;
                     resultInput.setText(String.valueOf(n));
                     recordResult();
