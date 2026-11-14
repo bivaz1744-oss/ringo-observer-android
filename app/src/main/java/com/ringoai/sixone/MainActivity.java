@@ -41,6 +41,7 @@ public class MainActivity extends Activity {
         pendingStake = prefs.getInt("pendingStake", 0);
         loadHistory();
         buildUi();
+        registerOcrReceiver();
         refresh();
     }
 
@@ -50,7 +51,9 @@ public class MainActivity extends Activity {
                 int n = intent.getIntExtra("number", -1);
                 if (n >= 0 && n <= 36 && n != lastOcrNumber) {
                     lastOcrNumber = n;
-                    statusView.setText("Распознано на экране число " + n + ". Нажми «Сохранить найденное число», чтобы записать результат.");
+                    resultInput.setText(String.valueOf(n));
+                    recordResult();
+                    statusView.setText("Автоматически распознано и сохранено число " + n + ".");
                 }
             }
         };
@@ -89,7 +92,7 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(0xFFF4F6FA);
         scroll.addView(root);
 
-        TextView title = text("RINGO AI 6.2", 27, true);
+        TextView title = text("RINGO AI 6.4", 27, true);
         title.setTextColor(0xFF18243A);
         root.addView(title);
         TextView subtitle = text("ДЕМО-НАБЛЮДАТЕЛЬ • 0–36 • 37 РЕЗУЛЬТАТОВ", 12, true);
@@ -123,7 +126,7 @@ public class MainActivity extends Activity {
         Button screenStop = button("Остановить распознавание");
         root.addView(screenStop);
         screenStop.setOnClickListener(v -> stopScreenReader());
-        Button acceptOcr = button("Сохранить найденное число");
+        Button acceptOcr = button("Сохранить найденное число вручную");
         root.addView(acceptOcr);
         acceptOcr.setOnClickListener(v -> {
             if (lastOcrNumber >= 0) {
@@ -168,7 +171,7 @@ public class MainActivity extends Activity {
         root.addView(reset);
         reset.setOnClickListener(v -> resetDemo());
 
-        TextView note = text("Важно: версия 6.2 пока не подключается к Buleto и не считывает экран автоматически. Результаты пока вводятся вручную. Частота чисел не позволяет надёжно предсказать следующий случайный результат. Ставки только виртуальные.", 12, false);
+        TextView note = text("Распознавание экрана экспериментальное: найденные отдельные числа автоматически добавляются в историю. Проверяй историю на точность распознавания. Прогноз не гарантирует выигрыш. Ставки только виртуальные.", 12, false);
         note.setTextColor(0xFF68758A);
         addGap(root, 12); root.addView(note);
         setContentView(scroll);
