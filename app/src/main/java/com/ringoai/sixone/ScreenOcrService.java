@@ -95,12 +95,15 @@ public class ScreenOcrService extends Service {
 
     private void handleText(Text text) {
         int candidate = -1;
-        // Берём только отдельную строку с числом 0–36: это уменьшает ложные срабатывания на коэффициентах/счёте.
+        int largestTextHeight = -1;
+        // Ищем отдельную строку с числом 0–36; при нескольких совпадениях берём самую крупную надпись.
         for (Text.TextBlock block : text.getTextBlocks()) {
             for (Text.Line line : block.getLines()) {
-                String value = line.getText().trim().replaceAll("[^0-9]", "");
-                if (value.matches("0|[1-9]|[12][0-9]|3[0-6]")) {
-                    try { candidate = Integer.parseInt(value); } catch (Exception ignored) {}
+                String value = line.getText().trim().replaceAll("^[^0-9]+|[^0-9]+$", "");
+                android.graphics.Rect bounds = line.getBoundingBox();
+                int textHeight = bounds == null ? 0 : bounds.height();
+                if (value.matches("0|[1-9]|[12][0-9]|3[0-6]") && textHeight > largestTextHeight) {
+                    try { candidate = Integer.parseInt(value); largestTextHeight = textHeight; } catch (Exception ignored) {}
                 }
             }
         }
