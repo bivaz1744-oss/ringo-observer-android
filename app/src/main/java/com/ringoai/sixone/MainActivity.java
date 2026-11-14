@@ -10,6 +10,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.IntentFilter;
 import android.media.projection.MediaProjectionManager;
+import android.provider.Settings;
+import android.net.Uri;
 import android.content.SharedPreferences;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,6 +64,12 @@ public class MainActivity extends Activity {
         else registerReceiver(ocrReceiver, filter);
     }
     private void startScreenReader() {
+        if (!Settings.canDrawOverlays(this)) {
+            Intent overlay = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+            startActivity(overlay);
+            toast("Разреши отображение поверх других приложений, вернись сюда и снова нажми запуск.");
+            return;
+        }
         MediaProjectionManager manager = (MediaProjectionManager)getSystemService(MEDIA_PROJECTION_SERVICE);
         startActivityForResult(manager.createScreenCaptureIntent(), CAPTURE_REQUEST);
     }
@@ -120,7 +128,7 @@ public class MainActivity extends Activity {
         stakeInput.setText("10");
         root.addView(stakeInput);
 
-        Button screenStart = button("Включить распознавание экрана Buleto");
+        Button screenStart = button("Включить распознавание экрана и плавающее окно");
         root.addView(screenStart);
         screenStart.setOnClickListener(v -> startScreenReader());
         Button screenStop = button("Остановить распознавание");
