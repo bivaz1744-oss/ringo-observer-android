@@ -1,6 +1,4 @@
-plugins {
-    id 'com.android.application'
-}
+plugins { id 'com.android.application' }
 
 android {
     namespace 'com.ringoai.sixone'
@@ -9,7 +7,11 @@ android {
         applicationId 'com.ringoai.sixone'
         minSdk 23
         targetSdk 35
-        versionCode 62
-        versionName '6.2'
+        versionCode 63
+        versionName '6.3'
     }
+}
+
+dependencies {
+    implementation 'com.google.mlkit:text-recognition:16.0.1'
 }
