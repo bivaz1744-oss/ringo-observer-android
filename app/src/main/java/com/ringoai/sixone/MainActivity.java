@@ -18,7 +18,7 @@ public class MainActivity extends Activity {
   private final LinkedHashSet<Integer> selected=new LinkedHashSet<>();
   private final ArrayList<CheckBox> choices=new ArrayList<>();
   private TextView balanceView,statsView,statusView,historyView,adviceView;
-  private EditText stakeInput,resultInput;
+  private EditText stakeInput;
   private int balance,wins,losses,rounds,pendingStake;
   private final LinkedHashSet<Integer> pending=new LinkedHashSet<>();
   private BroadcastReceiver receiver;
@@ -45,7 +45,7 @@ public class MainActivity extends Activity {
   private void gap(LinearLayout l,int h){View v=new View(this);l.addView(v,new LinearLayout.LayoutParams(1,h));}
   private void build(){
     ScrollView sc=new ScrollView(this);LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(22,18,22,30);root.setBackgroundColor(0xfff3f5f9);sc.addView(root);
-    root.addView(txt("RINGO AI 7.0",28,true));root.addView(txt("36 ЧИСЕЛ + 1 ОБЩАЯ КЛЕТКА СО СТРЕЛКАМИ",13,true));
+    root.addView(txt("RINGO AI 7.3",28,true));root.addView(txt("36 ЧИСЕЛ + 1 ОБЩАЯ КЛЕТКА СО СТРЕЛКАМИ",13,true));
     balanceView=txt("",22,true);balanceView.setTextColor(0xff167447);root.addView(balanceView);
     root.addView(txt("Выбери несколько вариантов для виртуальной ставки",18,true));
     LinearLayout grid=new LinearLayout(this);grid.setOrientation(1);root.addView(grid);
@@ -54,8 +54,8 @@ public class MainActivity extends Activity {
     LinearLayout arrowLine=new LinearLayout(this);arrowLine.setOrientation(0);grid.addView(arrowLine);addChoice(arrowLine,ARROW,"🟢 ↔ 🔴  СТРЕЛКИ (ОДНА КЛЕТКА)",2);
     root.addView(txt("Сумма на каждый выбранный вариант",15,true));stakeInput=new EditText(this);stakeInput.setInputType(2);stakeInput.setText("10");stakeInput.setSingleLine(true);root.addView(stakeInput);
     Button bet=btn("Поставить виртуально на выбранные варианты");root.addView(bet);bet.setOnClickListener(v->placeBet());
-    root.addView(txt("Результат раунда (1–36 или стрелки)",17,true));resultInput=new EditText(this);resultInput.setSingleLine(true);resultInput.setHint("Введи 1–36; для стрелок введи 37");resultInput.setInputType(2);root.addView(resultInput);
-    Button result=btn("Записать результат раунда");root.addView(result);result.setOnClickListener(v->record());
+    root.addView(txt("АВТОМАТИЧЕСКАЯ ЗАПИСЬ РЕЗУЛЬТАТОВ",17,true));
+    root.addView(txt("После включения захвата экрана бот сам отслеживает верхнюю строку истории игры, добавляет новые результаты и обновляет статистику. Вводить число и подтверждать каждый раунд не нужно.",13,false));
     Button start=btn("Включить распознавание экрана");root.addView(start);start.setOnClickListener(v->startReader());
     Button stop=btn("Остановить распознавание");root.addView(stop);stop.setOnClickListener(v->{Intent i=new Intent(this,ScreenOcrService.class);i.setAction(ScreenOcrService.ACTION_STOP);startService(i);});
     statusView=txt("Готов к работе в демо-режиме",15,true);root.addView(statusView);
@@ -68,10 +68,8 @@ public class MainActivity extends Activity {
   private void addChoice(LinearLayout line,int n,String label,int weight){CheckBox c=new CheckBox(this);c.setText(label);c.setTextSize(13);c.setPadding(5,4,5,4);c.setOnCheckedChangeListener((b,on)->{if(on)selected.add(n);else selected.remove(n);});line.addView(c,new LinearLayout.LayoutParams(0,-2,weight));choices.add(c);}
   private void placeBet(){if(!pending.isEmpty()){toast("Сначала запиши исход предыдущего раунда.");return;}if(selected.isEmpty()){toast("Выбери хотя бы один вариант.");return;}int stake;try{stake=Integer.parseInt(stakeInput.getText().toString());}catch(Exception e){toast("Проверь сумму.");return;}long total=(long)stake*selected.size();if(stake<=0||total>balance){toast("Недостаточно виртуального баланса.");return;}pending.addAll(selected);pendingStake=stake;balance-=total;save();statusView.setText("Виртуально выбрано: "+labels(pending)+". Общая сумма: "+total);refresh();}
   private String labels(Collection<Integer> values){ArrayList<String>a=new ArrayList<>();for(int n:values)a.add(n==ARROW?"Стрелки":String.valueOf(n));return android.text.TextUtils.join(", ",a);}
-  private void record(){int n;try{n=Integer.parseInt(resultInput.getText().toString().trim());}catch(Exception e){toast("Введи число 1–36 или 37 для клетки стрелок.");return;}if(n<1||n>TOTAL){toast("Допустимы 1–36 и 37 (общая клетка стрелок).");return;}rounds++;history.add(0,n);if(history.size()>500)history.remove(history.size()-1);
-    if(!pending.isEmpty()){if(pending.contains(n)){int payout=(int)Math.round(pendingStake*5.2);balance+=payout;wins++;statusView.setText("Совпадение в демо-режиме. Условное начисление: "+payout);}else{losses++;statusView.setText("Не совпало. Виртуальная ставка проиграна.");}pending.clear();pendingStake=0;}else statusView.setText("Результат сохранён.");
-    resultInput.setText("");save();refresh();}
-  private void registerOcr(){receiver=new BroadcastReceiver(){public void onReceive(Context c,Intent i){int n=i.getIntExtra("number",-1);if(n>=1&&n<=36){resultInput.setText(String.valueOf(n));statusView.setText("OCR обнаружил "+n+" — проверь и нажми «Записать результат раунда».");}}};IntentFilter f=new IntentFilter(ScreenOcrService.ACTION_NUMBER);if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(receiver,f);}
+
+  private void registerOcr(){receiver=new BroadcastReceiver(){public void onReceive(Context c,Intent i){int n=i.getIntExtra("number",-1);if(n>=1&&n<=36){loadSaved();refresh();statusView.setText("Автоматически записан новый исход: "+n);}}};IntentFilter f=new IntentFilter(ScreenOcrService.ACTION_NUMBER);if(Build.VERSION.SDK_INT>=33)registerReceiver(receiver,f,Context.RECEIVER_NOT_EXPORTED);else registerReceiver(receiver,f);}
   private void startReader(){if(!Settings.canDrawOverlays(this)){startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));return;}MediaProjectionManager m=(MediaProjectionManager)getSystemService(MEDIA_PROJECTION_SERVICE);startActivityForResult(m.createScreenCaptureIntent(),CAPTURE_REQUEST);}
   @Override protected void onActivityResult(int r,int c,Intent d){super.onActivityResult(r,c,d);if(r==CAPTURE_REQUEST&&c==RESULT_OK&&d!=null){Intent s=new Intent(this,ScreenOcrService.class);s.putExtra("resultCode",c);s.putExtra("data",d);if(Build.VERSION.SDK_INT>=26)startForegroundService(s);else startService(s);}}
   @Override protected void onDestroy(){if(receiver!=null)try{unregisterReceiver(receiver);}catch(Exception e){}super.onDestroy();}
