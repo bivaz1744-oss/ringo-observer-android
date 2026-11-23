@@ -1,4 +1,4 @@
-name: Build Ringo AI 7.3 APK
+name: Build Ringo AI 7.4 APK
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: RingoAI-7.3-debug
+          name: RingoAI-7.4-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
