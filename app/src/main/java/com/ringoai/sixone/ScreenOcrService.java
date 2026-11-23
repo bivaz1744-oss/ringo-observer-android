@@ -10,7 +10,7 @@ public class ScreenOcrService extends Service {
  public static final String ACTION_NUMBER="com.ringoai.sixone.OCR_NUMBER";
  public static final String ACTION_STOP="com.ringoai.sixone.OCR_STOP";
  private static final String CHANNEL="ringo_screen_reader";
- private static final Pattern NUMBER_TOKEN=Pattern.compile("(?<![0-9])([1-9]|[12][0-9]|3[0-6])(?![0-9])");
+ private static final Pattern RESULT_TOKEN=Pattern.compile("(?<![0-9])([1-9]|[12][0-9]|3[0-7])(?![0-9])|[↔⇄⟷↕↑↓▲▼◀▶]|СТРЕЛКИ|ARROWS",Pattern.CASE_INSENSITIVE);
  private static final Pattern COEFFICIENT_TOKEN=Pattern.compile("(?<![0-9])([0-9]+[\\.,][0-9]{3,6})(?![0-9])");
  private MediaProjection projection; private VirtualDisplay display; private ImageReader reader; private TextRecognizer recognizer;
  private WindowManager windowManager; private LinearLayout panel; private TextView forecastView,statusView,historyView;
@@ -101,7 +101,7 @@ public class ScreenOcrService extends Service {
   Comparator<Text.Line> byX=(a,b)->Integer.compare(a.getBoundingBox().left,b.getBoundingBox().left);
   Collections.sort(numLines,byX);Collections.sort(coefLines,byX);
   StringBuilder nt=new StringBuilder(),ct=new StringBuilder();for(Text.Line l:numLines)nt.append(" ").append(l.getText());for(Text.Line l:coefLines)ct.append(" ").append(l.getText());
-  ArrayList<Integer> numbers=new ArrayList<>();Matcher nm=NUMBER_TOKEN.matcher(nt.toString());while(nm.find())try{numbers.add(Integer.parseInt(nm.group(1)));}catch(Exception ignored){}
+  ArrayList<Integer> numbers=new ArrayList<>();Matcher nm=RESULT_TOKEN.matcher(nt.toString());while(nm.find()){try{numbers.add(nm.group(1)==null?37:Integer.parseInt(nm.group(1)));}catch(Exception ignored){}}
   ArrayList<String> coeffs=new ArrayList<>();Matcher cm=COEFFICIENT_TOKEN.matcher(ct.toString());while(cm.find())coeffs.add(cm.group(1).replace(',','.'));
   if(numbers.size()<5||numbers.size()>9)return;
   String current=joinNumbers(numbers),coeffCsv=alignCoefficients(coeffs,numbers.size());
@@ -121,7 +121,7 @@ public class ScreenOcrService extends Service {
   int candidate=-1,index=-1;
   if(leftOverlap>=4&&leftOverlap>rightOverlap){candidate=numbers.get(0);index=0;}
   else if(rightOverlap>=4&&rightOverlap>leftOverlap){candidate=numbers.get(numbers.size()-1);index=numbers.size()-1;}
-  if(candidate<1||candidate>36){pendingSequence="";pendingSequenceFrames=0;return;}
+  if(candidate<1||candidate>37){pendingSequence="";pendingSequenceFrames=0;return;}
   if(current.equals(pendingSequence))pendingSequenceFrames++;else{pendingSequence=current;pendingSequenceFrames=1;}
   if(pendingSequenceFrames>=3){
    String coefficient=index<coeffs.size()?coeffs.get(index):"-";
@@ -141,7 +141,7 @@ public class ScreenOcrService extends Service {
  private String joinNumbers(List<Integer>a){StringBuilder b=new StringBuilder();for(int n:a){if(b.length()>0)b.append(",");b.append(n);}return b.toString();}
  private String joinStrings(List<String>a){StringBuilder b=new StringBuilder();for(String s:a){if(b.length()>0)b.append(",");b.append(s);}return b.toString();}
  private String alignCoefficients(List<String>a,int n){StringBuilder b=new StringBuilder();for(int i=0;i<n;i++){if(i>0)b.append(",");b.append(i<a.size()?a.get(i):"-");}return b.toString();}
- private ArrayList<Integer> parseNumbers(String s){ArrayList<Integer>a=new ArrayList<>();for(String v:s.split(","))try{int n=Integer.parseInt(v.trim());if(n>=1&&n<=36)a.add(n);}catch(Exception ignored){}return a;}
+ private ArrayList<Integer> parseNumbers(String s){ArrayList<Integer>a=new ArrayList<>();for(String v:s.split(","))try{int n=Integer.parseInt(v.trim());if(n>=1&&n<=37)a.add(n);}catch(Exception ignored){}return a;}
  @Override public void onDestroy(){if(panel!=null&&windowManager!=null)try{windowManager.removeView(panel);}catch(Exception ignored){}if(display!=null)display.release();if(reader!=null)reader.close();if(projection!=null)projection.stop();if(recognizer!=null)recognizer.close();stopForeground(true);super.onDestroy();}
  @Override public IBinder onBind(Intent intent){return null;}
 }
