@@ -107,11 +107,11 @@ public class ScreenOcrService extends Service {
   String current=joinNumbers(numbers),coeffCsv=alignCoefficients(coeffs,numbers.size());
   android.content.SharedPreferences p=getSharedPreferences("ringo70",0);String previous=p.getString("tickerSequence","");
   if(previous.isEmpty()){
-   if(p.getString("history","").trim().isEmpty()){
-    p.edit().putString("history",current).putString("historyCoefficients",coeffCsv).putInt("rounds",numbers.size())
-     .putString("tickerSequence",current).putString("tickerCoefficients",coeffCsv).apply();
-    setStatus("Нашёл строку истории. Сохранил "+numbers.size()+" видимых исходов и коэффициенты.");
-   }else{p.edit().putString("tickerSequence",current).putString("tickerCoefficients",coeffCsv).apply();setStatus("История распознана. Жду новый раунд автоматически.");}
+   // Seed the in-app history from the actual visible game ticker on first launch,
+   // replacing any old manually typed/demo entry from earlier app versions.
+   p.edit().putString("history",current).putString("historyCoefficients",coeffCsv).putInt("rounds",numbers.size())
+    .putString("tickerSequence",current).putString("tickerCoefficients",coeffCsv).apply();
+   setStatus("Нашёл историю игры. Сохранил "+numbers.size()+" прошлых исходов и коэффициенты.");
    refreshPanel();broadcastUpdate(-1);return;
   }
   if(current.equals(previous)){pendingSequence="";pendingSequenceFrames=0;return;}
