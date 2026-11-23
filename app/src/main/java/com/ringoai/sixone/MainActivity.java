@@ -24,10 +24,21 @@ public class MainActivity extends Activity {
   private BroadcastReceiver receiver;
 
   @Override public void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("ringo70",0);
-    balance=prefs.getInt("balance",1000);wins=prefs.getInt("wins",0);losses=prefs.getInt("losses",0);rounds=prefs.getInt("rounds",0);pendingStake=prefs.getInt("pendingStake",0);
-    String p=prefs.getString("pending","");for(String s:p.split(","))try{if(!s.isEmpty())pending.add(Integer.parseInt(s));}catch(Exception e){}
-    String h=prefs.getString("history","");for(String s:h.split(","))try{if(!s.isEmpty())history.add(Integer.parseInt(s));}catch(Exception e){}
+    loadSaved();
     build(); registerOcr(); refresh();
+  }
+  private void loadSaved(){
+    balance=prefs.getInt("balance",1000);
+    wins=prefs.getInt("wins",0); losses=prefs.getInt("losses",0);
+    rounds=prefs.getInt("rounds",0); pendingStake=prefs.getInt("pendingStake",0);
+    pending.clear();
+    for(String s:prefs.getString("pending","").split(","))try{if(!s.isEmpty())pending.add(Integer.parseInt(s));}catch(Exception ignored){}
+    history.clear();
+    for(String s:prefs.getString("history","").split(","))try{int n=Integer.parseInt(s);if(n>=1&&n<=TOTAL)history.add(n);}catch(Exception ignored){}
+  }
+  @Override protected void onResume(){
+    super.onResume();
+    if(prefs!=null){loadSaved();if(balanceView!=null)refresh();}
   }
   private TextView txt(String s,int size,boolean bold){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setPadding(0,7,0,7);if(bold)t.setTypeface(null,Typeface.BOLD);return t;}
   private Button btn(String s){Button b=new Button(this);b.setText(s);return b;}
@@ -64,7 +75,21 @@ public class MainActivity extends Activity {
   private void startReader(){if(!Settings.canDrawOverlays(this)){startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName())));return;}MediaProjectionManager m=(MediaProjectionManager)getSystemService(MEDIA_PROJECTION_SERVICE);startActivityForResult(m.createScreenCaptureIntent(),CAPTURE_REQUEST);}
   @Override protected void onActivityResult(int r,int c,Intent d){super.onActivityResult(r,c,d);if(r==CAPTURE_REQUEST&&c==RESULT_OK&&d!=null){Intent s=new Intent(this,ScreenOcrService.class);s.putExtra("resultCode",c);s.putExtra("data",d);if(Build.VERSION.SDK_INT>=26)startForegroundService(s);else startService(s);}}
   @Override protected void onDestroy(){if(receiver!=null)try{unregisterReceiver(receiver);}catch(Exception e){}super.onDestroy();}
-  private void refresh(){balanceView.setText("Демо-баланс: "+balance);int settled=wins+losses;statsView.setText("Раундов: "+rounds+"\nВыигранных виртуальных прогнозов: "+wins+"\nПроигранных: "+losses+"\nТочность: "+(settled==0?"—":String.format(Locale.US,"%.1f%%",wins*100.0/settled))+"\nАктивный выбор: "+(pending.isEmpty()?"нет":labels(pending)));int[] counts=new int[38];for(int n:history)counts[n]++;StringBuilder a=new StringBuilder("Частоты за "+history.size()+" раундов: ");for(int n=1;n<=37;n++)a.append(n==37?"стрелки":n).append("=").append(counts[n]).append(n==37?"":"  ");adviceView.setText(a+"\nЧастота прошлого не гарантирует следующий результат.");StringBuilder h=new StringBuilder();for(int i=0;i<Math.min(80,history.size());i++)h.append("#").append(rounds-i).append(": ").append(history.get(i)==37?"СТРЕЛКИ":history.get(i)).append("\n");historyView.setText(h.length()==0?"История пока пуста":h.toString());}
+  private void refresh(){
+    balanceView.setText("Демо-баланс: "+balance);
+    int settled=wins+losses;
+    statsView.setText("Раундов: "+rounds+"\nВыигранных виртуальных прогнозов: "+wins+
+      "\nПроигранных: "+losses+"\nТочность демо-ставок: "+
+      (settled==0?"—":String.format(Locale.US,"%.1f%%",wins*100.0/settled))+
+      "\nАктивный выбор: "+(pending.isEmpty()?"нет":labels(pending))+
+      "\nДемо-коэффициент выплаты: 5.2x");
+    adviceView.setText(RingoBrain.buildInsight(history));
+    StringBuilder h=new StringBuilder();
+    for(int i=0;i<Math.min(80,history.size());i++)
+      h.append("#").append(Math.max(1,rounds-i)).append(": ")
+       .append(history.get(i)==37?"СТРЕЛКИ":history.get(i)).append("\n");
+    historyView.setText(h.length()==0?"История пока пуста":h.toString());
+  }
   private void save(){StringBuilder h=new StringBuilder(),p=new StringBuilder();for(int n:history){if(h.length()>0)h.append(",");h.append(n);}for(int n:pending){if(p.length()>0)p.append(",");p.append(n);}prefs.edit().putInt("balance",balance).putInt("wins",wins).putInt("losses",losses).putInt("rounds",rounds).putInt("pendingStake",pendingStake).putString("pending",p.toString()).putString("history",h.toString()).apply();}
   private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_LONG).show();}
 }

@@ -35,7 +35,8 @@ public class ScreenOcrService extends Service {
     private TextRecognizer recognizer;
     private WindowManager windowManager;
     private LinearLayout panel;
-    private TextView balanceText, selectedText, detectedText, resultText;
+    private TextView balanceText, selectedText, detectedText, resultText, intelligenceView;
+    private int frameWidth, frameHeight;
     private EditText stakeInput, resultInput;
     private Button confirmButton;
     private final LinkedHashSet<Integer> selected = new LinkedHashSet<>();
@@ -110,6 +111,7 @@ public class ScreenOcrService extends Service {
                 }
             });
             balanceText=label("",14,true); panel.addView(balanceText);
+            intelligenceView=label("ИИ готовит статистическую оценку...",11,false); panel.addView(intelligenceView);
             selectedText=label("Выбрано: ничего",12,false); panel.addView(selectedText);
             ScrollView scroll = new ScrollView(this);
             LinearLayout grid = new LinearLayout(this); grid.setOrientation(LinearLayout.VERTICAL);
@@ -173,6 +175,16 @@ public class ScreenOcrService extends Service {
         balanceText.setText("Виртуальный баланс: "+balance);
         selectedText.setText("Выбрано: "+(selected.isEmpty()?"ничего":names(selected))+(hasPending?"\nАктивная ставка: "+names(pending)+" × "+stakePerChoice:""));
         for(int i=0;i<numberButtons.size();i++){int n=i+1;numberButtons.get(i).setBackgroundTintList(android.content.res.ColorStateList.valueOf(selected.contains(n)?0xff16865b:0xff394b63));}
+        refreshInsight();
+    }
+    private void refreshInsight(){
+        if(intelligenceView==null)return;
+        android.content.SharedPreferences p=getSharedPreferences("ringo70",0);
+        ArrayList<Integer> data=new ArrayList<>();
+        for(String s:p.getString("history","").split(","))try{
+            int n=Integer.parseInt(s);if(n>=1&&n<=37)data.add(n);
+        }catch(Exception ignored){}
+        intelligenceView.setText(RingoBrain.buildInsight(data));
     }
     private void placeVirtualBet(){
         if(hasPending){resultText.setText("Сначала подтверди исход предыдущего раунда.");return;}
@@ -200,6 +212,7 @@ public class ScreenOcrService extends Service {
 
     private void startCapture() {
         int width=getResources().getDisplayMetrics().widthPixels,height=getResources().getDisplayMetrics().heightPixels,density=getResources().getDisplayMetrics().densityDpi;
+        frameWidth=width; frameHeight=height;
         reader=ImageReader.newInstance(width,height,PixelFormat.RGBA_8888,2);
         reader.setOnImageAvailableListener(source->{
             if(!processing.compareAndSet(false,true)){Image skipped=null;try{skipped=source.acquireLatestImage();}catch(Exception ignored){}if(skipped!=null)skipped.close();return;}
@@ -218,15 +231,31 @@ public class ScreenOcrService extends Service {
         display=projection.createVirtualDisplay("RingoOCR",width,height,density,DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,reader.getSurface(),null,null);
     }
     private void handleText(Text text){
-        int candidate=-1,largest=-1;
+        int candidate=-1;
+        double bestScore=Double.NEGATIVE_INFINITY;
         for(Text.TextBlock block:text.getTextBlocks())for(Text.Line line:block.getLines()){
-            String value=line.getText().trim().replaceAll("^[^0-9]+|[^0-9]+$","");
-            android.graphics.Rect bounds=line.getBoundingBox();int h=bounds==null?0:bounds.height();
-            if(value.matches("[1-9]|[12][0-9]|3[0-6]")&&h>largest){try{candidate=Integer.parseInt(value);largest=h;}catch(Exception ignored){}}
+            String value=line.getText().trim();
+            if(!value.matches("[1-9]|[12][0-9]|3[0-6]"))continue;
+            android.graphics.Rect bounds=line.getBoundingBox();
+            if(bounds==null||bounds.height()<dp(16))continue;
+            // Ignore text rendered inside our own floating panel, when the OS includes it in capture.
+            if(panel!=null){
+                int left=paramsX, top=paramsY, right=left+dp(325), bottom=top+panel.getHeight();
+                if(bounds.left<right&&bounds.right>left&&bounds.top<bottom&&bounds.bottom>top)continue;
+            }
+            float cx=(bounds.left+bounds.right)/2f, cy=(bounds.top+bounds.bottom)/2f;
+            if(frameWidth>0&&(cx<frameWidth*0.08f||cx>frameWidth*0.92f))continue;
+            if(frameHeight>0&&(cy<frameHeight*0.10f||cy>frameHeight*0.90f))continue;
+            double centerX=frameWidth>0?Math.abs(cx-frameWidth/2.0)/frameWidth:0.5;
+            double centerY=frameHeight>0?Math.abs(cy-frameHeight/2.0)/frameHeight:0.5;
+            double score=bounds.height()*(1.0-0.55*centerX-0.35*centerY);
+            if(score>bestScore){try{candidate=Integer.parseInt(value);bestScore=score;}catch(Exception ignored){}}
         }
-        if(candidate<0){emptyCount++;if(emptyCount>=3){stableCandidate=-1;stableCount=0;lastSent=-1;}return;}
-        emptyCount=0;if(candidate==stableCandidate)stableCount++;else{stableCandidate=candidate;stableCount=1;}
-        if(stableCount>=3&&candidate!=lastSent){lastSent=candidate;showDetected(candidate);}
+        if(candidate<0){emptyCount++;if(emptyCount>=5){stableCandidate=-1;stableCount=0;lastSent=-1;}return;}
+        emptyCount=0;
+        if(candidate==stableCandidate)stableCount++;else{stableCandidate=candidate;stableCount=1;}
+        // Require repeated stable recognition. It is still a candidate: the player confirms it before saving.
+        if(stableCount>=5&&candidate!=lastSent){lastSent=candidate;showDetected(candidate);}
     }
     private void showDetected(int n){
         if(panel!=null){detectedText.setText("OCR увидел: "+n+" — проверь число и нажми подтверждение.");resultInput.setText(String.valueOf(n));}
