@@ -86,39 +86,4 @@ public final class RingoBrain {
         out.append("\nПроценты — сглаженный рейтинг по введённой истории, не реальные шансы и не совет ставить.");
         return out.toString();
     }
-
-    public static String buildRecommendation(List<Integer> newestFirst) {
-        int total = newestFirst == null ? 0 : newestFirst.size();
-        if (total == 0) return "МОЯ ПОДСКАЗКА: собираю историю игры…";
-        double[] counts = new double[OUTCOMES + 1];
-        double weightSum = 0.0;
-        int used = Math.min(total, 150);
-        for (int i = 0; i < used; i++) {
-            int n = newestFirst.get(i);
-            if (n < 1 || n > OUTCOMES) continue;
-            double w = Math.exp(-i / 45.0);
-            counts[n] += w; weightSum += w;
-        }
-        double[] transitions = new double[OUTCOMES + 1];
-        int seen = 0; int latest = newestFirst.get(0);
-        for (int i = 1; i < total; i++) if (newestFirst.get(i) == latest) {
-            int next = newestFirst.get(i - 1);
-            if (next >= 1 && next <= OUTCOMES) { transitions[next]++; seen++; }
-        }
-        int best = 1; double bestScore = -1.0;
-        double base = weightSum + OUTCOMES * 0.5;
-        double transitionWeight = 0.15 * seen / (seen + 30.0);
-        for (int n = 1; n <= OUTCOMES; n++) {
-            double historical = (counts[n] + 0.5) / base;
-            double conditional = (transitions[n] + 8.0 / OUTCOMES) / (seen + 8.0);
-            double score = (1.0 - transitionWeight) * historical + transitionWeight * conditional;
-            if (score > bestScore) { bestScore = score; best = n; }
-        }
-        String choice = best == 37 ? "СТРЕЛКИ" : String.valueOf(best);
-        double baseline = 100.0 / OUTCOMES;
-        String signal = bestScore > (baseline / 100.0) * 1.15 ? "слабое отличие от среднего" : "выраженного преимущества не видно";
-        return "МОЯ ПОДСКАЗКА: " + choice + "\nИстория: " + total +
-            " • оценка модели: " + String.format(Locale.US, "%.2f%%", bestScore * 100.0) +
-            "\n" + signal + ". Не гарантия результата.";
-    }
 }

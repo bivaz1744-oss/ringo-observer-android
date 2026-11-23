@@ -51,7 +51,7 @@ public class ScreenOcrService extends Service {
    hide.setOnClickListener(v->{try{windowManager.removeView(panel);panel=null;}catch(Exception ignored){}});
    int type=Build.VERSION.SDK_INT>=26?WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY:WindowManager.LayoutParams.TYPE_PHONE;
    int sw=getResources().getDisplayMetrics().widthPixels;int width=Math.min(dp(190),sw-dp(12));
-   panelX=dp(8);panelY=dp(90);
+   panelX=dp(8);panelY=Math.max(dp(90),(int)(getResources().getDisplayMetrics().heightPixels*0.155f));
    layoutParams=new WindowManager.LayoutParams(width,WindowManager.LayoutParams.WRAP_CONTENT,type,
     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL|WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT);
    layoutParams.gravity=Gravity.TOP|Gravity.START;layoutParams.x=panelX;layoutParams.y=panelY;windowManager.addView(panel,layoutParams);refreshPanel();
