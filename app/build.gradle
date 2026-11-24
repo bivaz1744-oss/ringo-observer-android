@@ -7,8 +7,8 @@ android {
         applicationId 'com.ringoai.sixone.v75'
         minSdk 23
         targetSdk 35
-        versionCode 75
-        versionName '7.5'
+        versionCode 76
+        versionName '7.6'
     }
 }
 
