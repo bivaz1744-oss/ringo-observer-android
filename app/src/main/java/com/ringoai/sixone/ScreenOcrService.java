@@ -11,20 +11,20 @@ public class ScreenOcrService extends Service {
  public static final String ACTION_STOP="com.ringoai.sixone.OCR_STOP";
  private static final String CHANNEL="ringo_screen_reader";
  private static final Pattern RESULT_TOKEN=Pattern.compile("(?<![0-9])([1-9]|[12][0-9]|3[0-7])(?![0-9])|[↔⇄⟷↕↑↓▲▼◀▶]|СТРЕЛКИ|ARROWS",Pattern.CASE_INSENSITIVE);
- private static final Pattern COEFFICIENT_TOKEN=Pattern.compile("(?<![0-9])([0-9]{1,2}[\\.,][0-9]{3,6})(?![0-9])");
+ private static final Pattern COEFFICIENT_TOKEN=Pattern.compile("(?<![0-9])(?:[xх]\\s*)?([0-9]{1,3}[\\.,][0-9]{1,6})\\s*[xх]?(?![0-9])",Pattern.CASE_INSENSITIVE);
  private static final int BOARD_CELLS=36;
  private MediaProjection projection; private VirtualDisplay display; private ImageReader reader; private TextRecognizer recognizer; private PowerManager.WakeLock wakeLock;
  private WindowManager windowManager; private LinearLayout panel; private TextView forecastView,statusView,historyView;
  private WindowManager.LayoutParams layoutParams; private int panelX,panelY,frameWidth,frameHeight;
- private final AtomicBoolean processing=new AtomicBoolean(false); private long lastScanAt;
+ private final AtomicBoolean processing=new AtomicBoolean(false); private long lastScanAt; private RingoStore store;
  private String pendingSequence=""; private int pendingSequenceFrames; private String latestBoardCsv=""; private int latestBoardCount; private long lastBoardSampleAt;
 
- @Override public void onCreate(){super.onCreate();recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
+ @Override public void onCreate(){super.onCreate();store=new RingoStore(this);recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
   if(Build.VERSION.SDK_INT>=26){NotificationChannel c=new NotificationChannel(CHANNEL,"RINGO AI — автоматическое наблюдение",NotificationManager.IMPORTANCE_LOW);getSystemService(NotificationManager.class).createNotificationChannel(c);}}
  @Override public int onStartCommand(Intent intent,int flags,int startId){
   if(intent!=null&&ACTION_STOP.equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
   if(intent==null||!intent.hasExtra("data")){stopSelf();return START_NOT_STICKY;}
-  Notification n=new Notification.Builder(this,CHANNEL).setContentTitle("RINGO AI 7.4 — автоанализ")
+  Notification n=new Notification.Builder(this,CHANNEL).setContentTitle("RINGO AI 7.6 — автоанализ")
    .setContentText("Считывает 36 ячеек и ленту, сохраняет историю. Только подсказки.")
    .setSmallIcon(android.R.drawable.ic_menu_view).setOngoing(true).build();
   if(Build.VERSION.SDK_INT>=29)startForeground(620,n,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);else startForeground(620,n);
@@ -60,14 +60,14 @@ public class ScreenOcrService extends Service {
   }catch(Exception e){panel=null;}
  }
  private void updatePosition(){if(panel!=null&&layoutParams!=null){layoutParams.x=panelX;layoutParams.y=panelY;try{windowManager.updateViewLayout(panel,layoutParams);}catch(Exception ignored){}}}
- private ArrayList<Integer> readHistory(){ArrayList<Integer>a=new ArrayList<>();String raw=getSharedPreferences("ringo70",0).getString("history","");for(String s:raw.split(","))try{int n=Integer.parseInt(s.trim());if(n>=1&&n<=37)a.add(n);}catch(Exception ignored){}return a;}
- private ArrayList<String> readCoefficients(){ArrayList<String>a=new ArrayList<>();String raw=getSharedPreferences("ringo70",0).getString("historyCoefficients","");for(String s:raw.split(",",-1))if(!s.trim().isEmpty())a.add(s.trim());return a;}
+ private ArrayList<Integer> readHistory(){return store.readHistory(500);}
+ private ArrayList<String> readCoefficients(){return store.readCoefficients(500);}
  private void refreshPanel(){
   if(panel==null)return;ArrayList<Integer> h=readHistory();ArrayList<String> c=readCoefficients();
   android.content.SharedPreferences p=getSharedPreferences("ringo70",0);
   String board=p.getString("boardLatest","");String samples=p.getString("boardSamples","");
   forecastView.setText(RingoBrain.buildRecommendation(h,board,samples));
-  int rounds=p.getInt("rounds",h.size());
+  int rounds=(int)Math.min(Integer.MAX_VALUE,store.getRoundCount());
   String last=h.isEmpty()?"—":(h.get(0)==37?"СТРЕЛКИ":String.valueOf(h.get(0)));
   String coef=c.isEmpty()?"—":c.get(0);
   int seen=p.getInt("boardCells",0);statusView.setText("Поле: "+seen+"/36 • раундов: "+rounds+" • последний: "+last+" @"+coef);
@@ -167,10 +167,12 @@ public class ScreenOcrService extends Service {
   String current=joinNumbers(numbers),coeffCsv=alignCoefficients(coeffs,numbers.size());
   String previous=p.getString("tickerSequence","");
   if(previous.isEmpty()){
-   p.edit().putString("history",current).putString("historyCoefficients",coeffCsv).putInt("rounds",numbers.size())
+   // Seed the visible strip only when this installation has no older saved rounds.
+   store.seedFromVisibleStrip(numbers,coeffs);
+   p.edit().putInt("rounds",(int)Math.min(Integer.MAX_VALUE,store.getRoundCount()))
     .putString("tickerSequence",current).putString("tickerCoefficients",coeffCsv).apply();
    if(!latestBoardCsv.isEmpty())appendBoardSample(0,latestBoardCsv);
-   setStatus("Запомнил видимую ленту ("+numbers.size()+") и поле "+latestBoardCount+"/36.");
+   setStatus("Лента синхронизирована: "+numbers.size()+" видимых исходов. Всего сохранено: "+store.getRoundCount()+".");
    refreshPanel();broadcastUpdate(-1);return;
   }
   if(current.equals(previous)){
@@ -178,18 +180,41 @@ public class ScreenOcrService extends Service {
    if(boardCount>=18)setStatus("Наблюдение активно: поле "+boardCount+"/36. Жду следующий раунд.");
    return;
   }
-  ArrayList<Integer> old=parseNumbers(previous);int leftOverlap=0,rightOverlap=0;
-  while(leftOverlap<Math.min(numbers.size()-1,old.size())&&numbers.get(leftOverlap+1).equals(old.get(leftOverlap)))leftOverlap++;
-  while(rightOverlap<Math.min(numbers.size(),old.size()-1)&&numbers.get(rightOverlap).equals(old.get(rightOverlap+1)))rightOverlap++;
-  int candidate=-1,index=-1;
-  if(leftOverlap>=4&&leftOverlap>rightOverlap){candidate=numbers.get(0);index=0;}
-  else if(rightOverlap>=4&&rightOverlap>leftOverlap){candidate=numbers.get(numbers.size()-1);index=numbers.size()-1;}
-  if(candidate<1||candidate>37){pendingSequence="";pendingSequenceFrames=0;return;}
+  ArrayList<Integer> old=parseNumbers(previous);
+  int index=inferNewTickerIndex(numbers,old);
+  int candidate=index>=0&&index<numbers.size()?numbers.get(index):-1;
+  if(candidate<1||candidate>37){
+   pendingSequence="";pendingSequenceFrames=0;
+   setStatus("Лента изменилась, проверяю новый результат…");
+   return;
+  }
   if(current.equals(pendingSequence))pendingSequenceFrames++;else{pendingSequence=current;pendingSequenceFrames=1;}
-  if(pendingSequenceFrames>=3){
+  // Two matching OCR frames are enough to capture the update before the ticker shifts again.
+  if(pendingSequenceFrames>=2){
    String coefficient=index<coeffs.size()?coeffs.get(index):"-";
    recordAutomatic(candidate,coefficient,current,coeffCsv);pendingSequence="";pendingSequenceFrames=0;
   }
+ }
+ private int inferNewTickerIndex(ArrayList<Integer> current,ArrayList<Integer> old){
+  if(current==null||old==null||current.size()<5||old.size()<5)return -1;
+  int n=current.size(),m=old.size();
+  int[][] dp=new int[n+1][m+1];
+  for(int i=1;i<=n;i++)for(int j=1;j<=m;j++)
+   dp[i][j]=current.get(i-1).equals(old.get(j-1))?dp[i-1][j-1]+1:Math.max(dp[i-1][j],dp[i][j-1]);
+  int minimum=Math.min(4,Math.min(n,m)-1);
+  if(dp[n][m]<minimum)return -1;
+  ArrayList<Integer> unmatched=new ArrayList<>();
+  int i=n,j=m;
+  while(i>0&&j>0){
+   if(current.get(i-1).equals(old.get(j-1))){i--;j--;}
+   else if(dp[i-1][j]>=dp[i][j-1]){unmatched.add(i-1);i--;}
+   else j--;
+  }
+  while(i>0){unmatched.add(i-1);i--;}
+  if(unmatched.size()!=1)return -1;
+  int idx=unmatched.get(0);
+  // A new round enters only at an end of the visible ticker, not in its middle.
+  return (idx==0||idx==n-1)?idx:-1;
  }
  private Integer parseResultToken(String raw){
   Matcher m=RESULT_TOKEN.matcher(raw);if(!m.find())return null;
@@ -201,7 +226,7 @@ public class ScreenOcrService extends Service {
   try{return Integer.parseInt(t);}catch(Exception ignored){return null;}
  }
  private String parseCoefficient(String raw){
-  Matcher m=COEFFICIENT_TOKEN.matcher(raw);if(!m.find())return null;return m.group(1).replace(',','.');
+  Matcher m=COEFFICIENT_TOKEN.matcher(raw==null?"":raw);if(!m.find())return null;return m.group(1).replace(',','.');
  }
  private void appendBoardSample(int outcome,String csv){
   if(csv==null||csv.isEmpty())return;
@@ -214,13 +239,16 @@ public class ScreenOcrService extends Service {
   p.edit().putString("boardSamples",b.toString()).apply();
  }
  private void recordAutomatic(int n,String coefficient,String ticker,String tickerCoefficients){
-  android.content.SharedPreferences p=getSharedPreferences("ringo70",0);ArrayList<Integer>h=readHistory();ArrayList<String>c=readCoefficients();
-  h.add(0,n);c.add(0,(coefficient==null||coefficient.isEmpty())?"-":coefficient);
-  while(h.size()>500)h.remove(h.size()-1);while(c.size()>500)c.remove(c.size()-1);
-  p.edit().putString("history",joinNumbers(h)).putString("historyCoefficients",joinStrings(c))
-   .putString("tickerSequence",ticker).putString("tickerCoefficients",tickerCoefficients).putInt("rounds",p.getInt("rounds",0)+1).apply();
+  android.content.SharedPreferences p=getSharedPreferences("ringo70",0);
+  String savedCoefficient=(coefficient==null||coefficient.isEmpty())?"-":coefficient;
+  // SQLite stores every round and its 36-cell snapshot without a fixed 500-record cap.
+  store.addRound(n,savedCoefficient,latestBoardCsv);
+  long total=store.getRoundCount();
+  p.edit().putString("tickerSequence",ticker).putString("tickerCoefficients",tickerCoefficients)
+   .putInt("rounds",(int)Math.min(Integer.MAX_VALUE,total)).apply();
   if(!latestBoardCsv.isEmpty()){appendBoardSample(n,latestBoardCsv);lastBoardSampleAt=System.currentTimeMillis();}
-  setStatus("Новый исход записан автоматически: "+n+" • коэффициент "+coefficient);refreshPanel();broadcastUpdate(n);
+  setStatus("Записан раунд №"+total+": "+n+" • коэффициент "+savedCoefficient);
+  refreshPanel();broadcastUpdate(n);
  }
  private void setStatus(String value){if(statusView!=null)statusView.setText(value);}
  private void broadcastUpdate(int n){Intent i=new Intent(ACTION_NUMBER);i.setPackage(getPackageName());i.putExtra("number",n);i.putExtra("automatic",true);sendBroadcast(i);}
@@ -228,6 +256,6 @@ public class ScreenOcrService extends Service {
  private String joinStrings(List<String>a){StringBuilder b=new StringBuilder();for(String s:a){if(b.length()>0)b.append(",");b.append(s);}return b.toString();}
  private String alignCoefficients(List<String>a,int n){StringBuilder b=new StringBuilder();for(int i=0;i<n;i++){if(i>0)b.append(",");b.append(i<a.size()?a.get(i):"-");}return b.toString();}
  private ArrayList<Integer> parseNumbers(String s){ArrayList<Integer>a=new ArrayList<>();for(String v:s.split(","))try{int n=Integer.parseInt(v.trim());if(n>=1&&n<=37)a.add(n);}catch(Exception ignored){}return a;}
- @Override public void onDestroy(){if(panel!=null&&windowManager!=null)try{windowManager.removeView(panel);}catch(Exception ignored){}if(display!=null)display.release();if(reader!=null)reader.close();if(projection!=null)projection.stop();if(recognizer!=null)recognizer.close();if(wakeLock!=null&&wakeLock.isHeld())try{wakeLock.release();}catch(Exception ignored){}stopForeground(true);super.onDestroy();}
+ @Override public void onDestroy(){if(panel!=null&&windowManager!=null)try{windowManager.removeView(panel);}catch(Exception ignored){}if(display!=null)display.release();if(reader!=null)reader.close();if(projection!=null)projection.stop();if(recognizer!=null)recognizer.close();if(store!=null)store.close();if(wakeLock!=null&&wakeLock.isHeld())try{wakeLock.release();}catch(Exception ignored){}stopForeground(true);super.onDestroy();}
  @Override public IBinder onBind(Intent intent){return null;}
 }
