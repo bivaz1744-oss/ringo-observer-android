@@ -87,6 +87,92 @@ public final class RingoBrain {
         return out.toString();
     }
 
+    public static String buildRecommendation(List<Integer> newestFirst, String currentBoardCsv, String samplesRaw) {
+        String base = buildRecommendation(newestFirst);
+        double[] current = parseBoardVector(currentBoardCsv);
+        int currentCount = countValid(current);
+        if (currentCount < 18) return base + "\nПоле: пока не считано 18+ ячеек из 36.";
+        java.util.ArrayList<double[]> vectors = new java.util.ArrayList<>();
+        java.util.ArrayList<Integer> outcomes = new java.util.ArrayList<>();
+        if (samplesRaw != null && !samplesRaw.isEmpty()) {
+            for (String row : samplesRaw.split("\\n")) {
+                String[] parts = row.split("\\|", 3);
+                if (parts.length != 3) continue;
+                int outcome;
+                try { outcome = Integer.parseInt(parts[1]); } catch (Exception e) { continue; }
+                if (outcome < 1 || outcome > OUTCOMES) continue;
+                double[] v = parseBoardVector(parts[2]);
+                if (countValid(v) >= 18) { vectors.add(normalizeBoard(v)); outcomes.add(outcome); }
+            }
+        }
+        if (vectors.size() < 12) {
+            return base + "\nАнализ 36 ячеек: считано " + currentCount + "/36. Связанных снимков с исходами: " +
+                vectors.size() + "/12 — модель пока накапливает наблюдения.";
+        }
+        double[] normalizedCurrent = normalizeBoard(current);
+        boolean[] used = new boolean[vectors.size()];
+        double[] votes = new double[OUTCOMES + 1];
+        int k = Math.min(30, vectors.size());
+        double voteTotal = 0.0;
+        for (int rank = 0; rank < k; rank++) {
+            int best = -1; double bestDistance = Double.MAX_VALUE;
+            for (int i = 0; i < vectors.size(); i++) {
+                if (used[i]) continue;
+                double distance = boardDistance(normalizedCurrent, vectors.get(i));
+                if (distance < bestDistance) { bestDistance = distance; best = i; }
+            }
+            if (best < 0) break;
+            used[best] = true;
+            double weight = 1.0 / (0.01 + bestDistance);
+            votes[outcomes.get(best)] += weight;
+            voteTotal += weight;
+        }
+        int winner = 1;
+        for (int n = 2; n <= OUTCOMES; n++) if (votes[n] > votes[winner]) winner = n;
+        double share = voteTotal == 0 ? 0 : votes[winner] / voteTotal * 100.0;
+        String label = winner == 37 ? "СТРЕЛКИ" : String.valueOf(winner);
+        return "МОЯ ПОДСКАЗКА ПО 36 ЯЧЕЙКАМ: " + label +
+            "\nСходные снимки: " + k + " из " + vectors.size() +
+            "\nДоля этого исхода среди ближайших снимков: " + String.format(Locale.US, "%.1f%%", share) +
+            "\nЭто экспериментальное сходство с прошлой историей, не вероятность и не гарантия. " +
+            "Если исход независим и случаен, такая статистика не даёт надёжного преимущества.";
+    }
+
+    private static double[] parseBoardVector(String csv) {
+        double[] out = new double[36];
+        java.util.Arrays.fill(out, Double.NaN);
+        if (csv == null) return out;
+        String[] parts = csv.split(",", -1);
+        for (int i = 0; i < Math.min(36, parts.length); i++) {
+            try { out[i] = Double.parseDouble(parts[i].trim().replace(',', '.')); }
+            catch (Exception ignored) { }
+        }
+        return out;
+    }
+
+    private static int countValid(double[] values) {
+        int n = 0;
+        for (double v : values) if (!Double.isNaN(v) && !Double.isInfinite(v) && v > 0) n++;
+        return n;
+    }
+
+    private static double[] normalizeBoard(double[] values) {
+        double sum = 0; int n = 0;
+        for (double v : values) if (!Double.isNaN(v) && !Double.isInfinite(v) && v > 0) { sum += v; n++; }
+        double mean = n == 0 ? 1 : sum / n;
+        double[] out = new double[36];
+        for (int i = 0; i < 36; i++) out[i] = (!Double.isNaN(values[i]) && values[i] > 0) ? values[i] / mean : Double.NaN;
+        return out;
+    }
+
+    private static double boardDistance(double[] a, double[] b) {
+        double sum = 0; int n = 0;
+        for (int i = 0; i < 36; i++) if (!Double.isNaN(a[i]) && !Double.isNaN(b[i])) {
+            sum += Math.abs(a[i] - b[i]); n++;
+        }
+        return n < 18 ? 10.0 : sum / n;
+    }
+
     public static String buildRecommendation(List<Integer> newestFirst) {
         int total = newestFirst == null ? 0 : newestFirst.size();
         if (total == 0) return "МОЯ ПОДСКАЗКА: собираю историю игры…";
