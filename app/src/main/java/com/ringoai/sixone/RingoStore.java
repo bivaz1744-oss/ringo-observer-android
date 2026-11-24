@@ -9,7 +9,6 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 /** Durable, unbounded round history stored in the app's private SQLite database. */
@@ -52,8 +51,7 @@ public final class RingoStore extends SQLiteOpenHelper {
                     try {
                         int outcome = Integer.parseInt(numbers[i].trim());
                         if (outcome < 1 || outcome > 37) continue;
-                        int coefficientIndex = numbers.length - 1 - i;
-                        String coefficient = coefficientIndex < coefficients.length ? coefficients[coefficientIndex].trim() : "-";
+                        String coefficient = i < coefficients.length ? coefficients[i].trim() : "-";
                         insertRow(db, outcome, coefficient, "", now - (numbers.length - i) * 1000L);
                     } catch (Exception ignored) { }
                 }
