@@ -102,6 +102,9 @@ public class ScreenOcrService extends Service {
   int[] tickerNumbers=new int[7];Arrays.fill(tickerNumbers,-1);
   String[] tickerCoefs=new String[7];Arrays.fill(tickerCoefs,"-");
   String[] board=new String[BOARD_CELLS];Arrays.fill(board,"-");
+  float[] labelY=new float[BOARD_CELLS];Arrays.fill(labelY,Float.NaN);
+  int[] labelCol=new int[BOARD_CELLS];Arrays.fill(labelCol,-1);
+  ArrayList<Float> coefficientY=new ArrayList<>();ArrayList<Integer> coefficientCol=new ArrayList<>();ArrayList<String> coefficientValues=new ArrayList<>();
   float tickStart=frameWidth*0.10f,tickEnd=frameWidth*0.69f,tickStep=(tickEnd-tickStart)/7f;
   float gridLeft=frameWidth*0.0667f,gridTop=frameHeight*0.2244f;
   float tileWidth=frameWidth*0.190f,xStep=frameWidth*0.2014f;
@@ -116,19 +119,38 @@ public class ScreenOcrService extends Service {
      else{String c=parseCoefficient(raw);if(c!=null)tickerCoefs[bin]=c;}
     }
    }
-   if(x>=gridLeft&&x<=gridLeft+2*xStep+tileWidth&&y>=gridTop){
-    int col=(int)((x-gridLeft)/xStep),row=(int)((y-gridTop)/yStep);
-    if(col>=0&&col<3&&row>=0&&row<12){
-     float cellX=gridLeft+col*xStep,cellY=gridTop+row*yStep;
-     float relY=(y-cellY)/tileHeight;
-     if(x<=cellX+tileWidth&&y<=cellY+tileHeight*1.12f&&relY>=0.62f){
-      String c=parseCoefficient(raw);if(c!=null)board[row*3+col]=c;
-     }
+   if(x>=gridLeft&&x<=gridLeft+2*xStep+tileWidth&&y>=frameHeight*0.18f){
+    int col=(int)((x-gridLeft)/xStep);
+    if(col>=0&&col<3&&x<=gridLeft+col*xStep+tileWidth){
+     Integer cellNo=parseCellLabel(raw);
+     if(cellNo!=null){labelY[cellNo-1]=y;labelCol[cellNo-1]=col;}
+     String c=parseCoefficient(raw);
+     if(c!=null){coefficientY.add(y);coefficientCol.add(col);coefficientValues.add(c);}
     }
    }
   }
   ArrayList<Integer> numbers=new ArrayList<>();ArrayList<String> coeffs=new ArrayList<>();
   for(int i=0;i<7;i++)if(tickerNumbers[i]>=1&&tickerNumbers[i]<=37){numbers.add(tickerNumbers[i]);coeffs.add(tickerCoefs[i]);}
+  int labelsFound=0;for(int i=0;i<BOARD_CELLS;i++)if(labelCol[i]>=0)labelsFound++;
+  for(int i=0;i<coefficientValues.size();i++){
+   int col=coefficientCol.get(i);float cy=coefficientY.get(i);String value=coefficientValues.get(i);
+   int best=-1;float bestGap=Float.MAX_VALUE;
+   if(labelsFound>=8){
+    for(int cell=0;cell<BOARD_CELLS;cell++)if(labelCol[cell]==col&&!Float.isNaN(labelY[cell])){
+     float gap=cy-labelY[cell];
+     if(gap>=tileHeight*0.45f&&gap<=tileHeight*1.20f&&gap<bestGap){best=cell;bestGap=gap;}
+    }
+   }
+   if(best>=0)board[best]=value;
+   else if(labelsFound<8){
+    int row=(int)((cy-gridTop)/yStep);
+    if(row>=0&&row<12){
+     float cellY=gridTop+row*yStep;
+     float relY=(cy-cellY)/tileHeight;
+     if(relY>=0.62f&&relY<=1.12f)board[row*3+col]=value;
+    }
+   }
+  }
   int boardCount=0;for(String v:board)if(!"-".equals(v))boardCount++;
   android.content.SharedPreferences p=getSharedPreferences("ringo70",0);
   if(boardCount>=18){
@@ -172,6 +194,11 @@ public class ScreenOcrService extends Service {
  private Integer parseResultToken(String raw){
   Matcher m=RESULT_TOKEN.matcher(raw);if(!m.find())return null;
   try{return m.group(1)==null?37:Integer.parseInt(m.group(1));}catch(Exception ignored){return null;}
+ }
+ private Integer parseCellLabel(String raw){
+  String t=raw==null?"":raw.trim();
+  if(!t.matches("(?:[1-9]|[12][0-9]|3[0-6])"))return null;
+  try{return Integer.parseInt(t);}catch(Exception ignored){return null;}
  }
  private String parseCoefficient(String raw){
   Matcher m=COEFFICIENT_TOKEN.matcher(raw);if(!m.find())return null;return m.group(1).replace(',','.');
