@@ -91,7 +91,7 @@ public final class RingoBrain {
         String base = buildRecommendation(newestFirst);
         double[] current = parseBoardVector(currentBoardCsv);
         int currentCount = countValid(current);
-        if (currentCount < 18) return base + "\nПоле: пока не считано 18+ ячеек из 36.";
+        if (currentCount < 30) return base + "\nПоле: пока не распознано 30+ ячеек из 36.";
         java.util.ArrayList<double[]> vectors = new java.util.ArrayList<>();
         java.util.ArrayList<Integer> outcomes = new java.util.ArrayList<>();
         if (samplesRaw != null && !samplesRaw.isEmpty()) {
@@ -102,7 +102,7 @@ public final class RingoBrain {
                 try { outcome = Integer.parseInt(parts[1]); } catch (Exception e) { continue; }
                 if (outcome < 1 || outcome > OUTCOMES) continue;
                 double[] v = parseBoardVector(parts[2]);
-                if (countValid(v) >= 18) { vectors.add(normalizeBoard(v)); outcomes.add(outcome); }
+                if (countValid(v) >= 30) { vectors.add(normalizeBoard(v)); outcomes.add(outcome); }
             }
         }
         if (vectors.size() < 12) {
