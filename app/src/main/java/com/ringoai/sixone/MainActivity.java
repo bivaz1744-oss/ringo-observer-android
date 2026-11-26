@@ -10,8 +10,8 @@ public class MainActivity extends Activity {
  private Button button(String s){Button b=new Button(this);b.setText(s);return b;}
  private void build(){
   ScrollView scroll=new ScrollView(this);LinearLayout root=new LinearLayout(this);root.setOrientation(1);root.setPadding(22,18,22,28);root.setBackgroundColor(0xfff3f5f9);scroll.addView(root);
-  root.addView(text("RINGO AI 7.6",26,true));root.addView(text("АВТОМАТИЧЕСКИЙ НАБЛЮДАТЕЛЬ ИГРЫ",13,true));
-  root.addView(text("Автоматически считывает видимые 36 ячеек игрового поля и верхнюю ленту результатов, связывает номера с коэффициентами и сохраняет наблюдения в памяти телефона. Панель может оставаться поверх других приложений.",15,false));
+  root.addView(text("RINGO AI 7.7",26,true));root.addView(text("АВТОМАТИЧЕСКИЙ НАБЛЮДАТЕЛЬ ИГРЫ",13,true));
+  root.addView(text("Распознаёт видимые ячейки и верхнюю ленту результатов. Снимок поля сохраняется только при распознавании не менее 30 из 36 ячеек, чтобы не засорять историю неполными данными. Панель может оставаться поверх других приложений.",15,false));
   Button start=button("ЗАПУСТИТЬ НАБЛЮДЕНИЕ");root.addView(start);start.setOnClickListener(v->startReader());
   Button stop=button("ОСТАНОВИТЬ НАБЛЮДЕНИЕ");root.addView(stop);stop.setOnClickListener(v->{Intent i=new Intent(this,ScreenOcrService.class);i.setAction(ScreenOcrService.ACTION_STOP);startService(i);statusView.setText("Наблюдение остановлено.");});
   statusView=text("Готов. Нажми «Запустить наблюдение».",14,true);root.addView(statusView);
@@ -19,7 +19,7 @@ public class MainActivity extends Activity {
   root.addView(text("СТАТИСТИКА",18,true));statsView=text("",14,false);root.addView(statsView);
   root.addView(text("СНИМОК 36 ЯЧЕЕК И КОЭФФИЦИЕНТЫ",18,true));boardView=text("",12,false);root.addView(boardView);
   root.addView(text("ИСТОРИЯ РЕЗУЛЬТАТОВ И КОЭФФИЦИЕНТОВ",18,true));historyView=text("",14,false);root.addView(historyView);
-  root.addView(text("Наблюдение продолжается через другие приложения, но Android показывает только экран перед глазами: когда игра скрыта за WhatsApp или Instagram, её данные не видны до возвращения в игру. Бот не нажимает игровые кнопки и не делает ставок. Статистика не гарантирует следующий исход.",12,false));
+  root.addView(text("Наблюдение может продолжаться через другие приложения, но Android показывает только экран перед глазами: когда игра скрыта за WhatsApp или Instagram, её данные не видны до возвращения в игру. Бот не нажимает игровые кнопки и не делает ставок. Статистика не гарантирует следующий исход.",12,false));
   setContentView(scroll);
  }
  private void startReader(){
@@ -33,12 +33,12 @@ public class MainActivity extends Activity {
  private ArrayList<String> readCoefficients(){return store.readCoefficients(500);}
  private void refresh(){
   ArrayList<Integer>n=readHistory();ArrayList<String>c=readCoefficients();
-  String board=prefs.getString("boardLatest","");String samples=prefs.getString("boardSamples","");
+  String board=prefs.getString("boardLatest","");String samples=store.readBoardSamplesCsv(2000);
   recommendationView.setText(RingoBrain.buildRecommendation(n,board,samples));
-  int cells=prefs.getInt("boardCells",0);int sampleCount=samples.isEmpty()?0:samples.split("\\n").length;
+  int cells=prefs.getInt("boardCells",0);long sampleCount=store.getBoardSampleCount();
   statsView.setText("Записано раундов всего: "+store.getRoundCount()+"\nЗаписей коэффициентов: "+store.getRoundCount()+
    "\nЯчеек считано в последнем кадре: "+cells+"/36\nСнимков поля сохранено: "+sampleCount+
-   "\nХранение: локальная база телефона, без лимита в 500 раундов.");
+   "\nХранение: локальная база телефона; история не обрезается до 500 раундов.");
   if(board.isEmpty())boardView.setText("Поле пока не распознано.");
   else{
    String[] values=board.split(",",-1);StringBuilder matrix=new StringBuilder();
