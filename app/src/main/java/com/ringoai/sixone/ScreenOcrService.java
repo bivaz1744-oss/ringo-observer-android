@@ -17,16 +17,19 @@ public class ScreenOcrService extends Service {
  private WindowManager windowManager; private LinearLayout panel; private TextView forecastView,statusView,historyView;
  private WindowManager.LayoutParams layoutParams; private int panelX,panelY,frameWidth,frameHeight;
  private final AtomicBoolean processing=new AtomicBoolean(false); private long lastScanAt; private RingoStore store;
- private String pendingSequence=""; private int pendingSequenceFrames; private String latestBoardCsv=""; private int latestBoardCount; private long lastBoardSampleAt;
+ private String pendingSequence=""; private int pendingSequenceFrames; private String latestBoardCsv=""; private int latestBoardCount; private long latestBoardAt;
 
  @Override public void onCreate(){super.onCreate();store=new RingoStore(this);recognizer=TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS);
   if(Build.VERSION.SDK_INT>=26){NotificationChannel c=new NotificationChannel(CHANNEL,"RINGO AI — автоматическое наблюдение",NotificationManager.IMPORTANCE_LOW);getSystemService(NotificationManager.class).createNotificationChannel(c);}}
  @Override public int onStartCommand(Intent intent,int flags,int startId){
   if(intent!=null&&ACTION_STOP.equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
   if(intent==null||!intent.hasExtra("data")){stopSelf();return START_NOT_STICKY;}
-  Notification n=new Notification.Builder(this,CHANNEL).setContentTitle("RINGO AI 7.6 — автоанализ")
-   .setContentText("Считывает 36 ячеек и ленту, сохраняет историю. Только подсказки.")
-   .setSmallIcon(android.R.drawable.ic_menu_view).setOngoing(true).build();
+  Notification n=Notification.Builder notificationBuilder = Build.VERSION.SDK_INT >= 26
+   ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
+  Notification n=notificationBuilder.setContentTitle("RINGO AI 7.7 — автоанализ")
+   .setContentText("Наблюдение экрана и сохранение подтверждённых результатов.")
+   .setSmallIcon(android.R.drawable.ic_menu_view).setOngoing(true)
+   .setPriority(Notification.PRIORITY_MIN).build();
   if(Build.VERSION.SDK_INT>=29)startForeground(620,n,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);else startForeground(620,n);
   try{PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);wakeLock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"RingoAI::ScreenObserver");wakeLock.acquire();}catch(Exception ignored){}
   int code=intent.getIntExtra("resultCode",Activity.RESULT_CANCELED);Intent data=intent.getParcelableExtra("data");
@@ -42,7 +45,7 @@ public class ScreenOcrService extends Service {
    if(Build.VERSION.SDK_INT>=23&&!Settings.canDrawOverlays(this))return;
    windowManager=(WindowManager)getSystemService(WINDOW_SERVICE);panel=new LinearLayout(this);panel.setOrientation(LinearLayout.VERTICAL);panel.setPadding(dp(8),dp(6),dp(8),dp(6));
    GradientDrawable bg=new GradientDrawable();bg.setColor(0xEE132238);bg.setCornerRadius(dp(12));bg.setStroke(dp(1),0xff42a5d8);panel.setBackground(bg);panel.setElevation(dp(8));
-   TextView header=label("RINGO AI 7.5",10,true);panel.addView(header);
+   TextView header=label("RINGO AI 7.7",10,true);panel.addView(header);
    header.setOnTouchListener(new View.OnTouchListener(){float sx,sy;int ox,oy;public boolean onTouch(View v,MotionEvent e){
     if(e.getAction()==MotionEvent.ACTION_DOWN){sx=e.getRawX();sy=e.getRawY();ox=panelX;oy=panelY;return true;}
     if(e.getAction()==MotionEvent.ACTION_MOVE){panelX=ox+(int)(e.getRawX()-sx);panelY=oy+(int)(e.getRawY()-sy);updatePosition();return true;}return true;}});
@@ -52,10 +55,10 @@ public class ScreenOcrService extends Service {
    Button hide=new Button(this);hide.setText("Скрыть панель");hide.setTextSize(10);hide.setAllCaps(false);panel.addView(hide);
    hide.setOnClickListener(v->{try{windowManager.removeView(panel);panel=null;}catch(Exception ignored){}});
    int type=Build.VERSION.SDK_INT>=26?WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY:WindowManager.LayoutParams.TYPE_PHONE;
-   int sw=getResources().getDisplayMetrics().widthPixels;int width=Math.min(dp(108),sw-dp(12));
+   int sw=getResources().getDisplayMetrics().widthPixels;int width=Math.min(dp(280),sw-dp(12));
    panelX=Math.max(dp(4),sw-width-dp(4));panelY=dp(92);
    layoutParams=new WindowManager.LayoutParams(width,WindowManager.LayoutParams.WRAP_CONTENT,type,
-    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL|WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT);
+    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL|WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT);
    layoutParams.gravity=Gravity.TOP|Gravity.START;layoutParams.x=panelX;layoutParams.y=panelY;windowManager.addView(panel,layoutParams);refreshPanel();
   }catch(Exception e){panel=null;}
  }
@@ -65,7 +68,7 @@ public class ScreenOcrService extends Service {
  private void refreshPanel(){
   if(panel==null)return;ArrayList<Integer> h=readHistory();ArrayList<String> c=readCoefficients();
   android.content.SharedPreferences p=getSharedPreferences("ringo70",0);
-  String board=p.getString("boardLatest","");String samples=p.getString("boardSamples","");
+  String board=p.getString("boardLatest","");String samples=store.readBoardSamplesCsv(2000);
   forecastView.setText(RingoBrain.buildRecommendation(h,board,samples));
   int rounds=(int)Math.min(Integer.MAX_VALUE,store.getRoundCount());
   String last=h.isEmpty()?"—":(h.get(0)==37?"СТРЕЛКИ":String.valueOf(h.get(0)));
@@ -78,7 +81,7 @@ public class ScreenOcrService extends Service {
   frameWidth=getResources().getDisplayMetrics().widthPixels;frameHeight=getResources().getDisplayMetrics().heightPixels;int density=getResources().getDisplayMetrics().densityDpi;
   reader=ImageReader.newInstance(frameWidth,frameHeight,PixelFormat.RGBA_8888,2);
   reader.setOnImageAvailableListener(source->{
-   long now=SystemClock.elapsedRealtime();if(now-lastScanAt<1200L){Image s=null;try{s=source.acquireLatestImage();}catch(Exception ignored){}if(s!=null)s.close();return;}
+   long now=SystemClock.elapsedRealtime();if(now-lastScanAt<700L){Image s=null;try{s=source.acquireLatestImage();}catch(Exception ignored){}if(s!=null)s.close();return;}
    if(!processing.compareAndSet(false,true)){Image s=null;try{s=source.acquireLatestImage();}catch(Exception ignored){}if(s!=null)s.close();return;}
    lastScanAt=now;Image image=null;
    try{
@@ -153,15 +156,14 @@ public class ScreenOcrService extends Service {
   }
   int boardCount=0;for(String v:board)if(!"-".equals(v))boardCount++;
   android.content.SharedPreferences p=getSharedPreferences("ringo70",0);
-  if(boardCount>=18){
-   latestBoardCsv=joinStrings(Arrays.asList(board));latestBoardCount=boardCount;
-   p.edit().putString("boardLatest",latestBoardCsv).putInt("boardCells",boardCount).putLong("boardUpdatedAt",System.currentTimeMillis()).apply();
-   long wall=System.currentTimeMillis();
-   if(wall-lastBoardSampleAt>=60000L){appendBoardSample(0,latestBoardCsv);lastBoardSampleAt=wall;}
+  if(boardCount>=30){
+   latestBoardCsv=joinStrings(Arrays.asList(board));latestBoardCount=boardCount;latestBoardAt=System.currentTimeMillis();
+   p.edit().putString("boardLatest",latestBoardCsv).putInt("boardCells",boardCount).putLong("boardUpdatedAt",latestBoardAt).apply();
   }
   if(numbers.size()<5||numbers.size()>9){
-   if(boardCount>=18)setStatus("Поле считано: "+boardCount+"/36. Лента ожидает новый результат.");
-   else setStatus("Служба активна. Жду возвращения игрового поля на экран.");
+   if(boardCount>=30)setStatus("Поле распознано: "+boardCount+"/36. Лента ожидает новый результат.");
+   else if(boardCount>0)setStatus("Поле распознано частично: "+boardCount+"/36. Снимок не сохраняю.");
+   else setStatus("Служба активна. Жду игровое поле на экране.");
    return;
   }
   String current=joinNumbers(numbers),coeffCsv=alignCoefficients(coeffs,numbers.size());
@@ -171,13 +173,12 @@ public class ScreenOcrService extends Service {
    store.seedFromVisibleStrip(numbers,coeffs);
    p.edit().putInt("rounds",(int)Math.min(Integer.MAX_VALUE,store.getRoundCount()))
     .putString("tickerSequence",current).putString("tickerCoefficients",coeffCsv).apply();
-   if(!latestBoardCsv.isEmpty())appendBoardSample(0,latestBoardCsv);
    setStatus("Лента синхронизирована: "+numbers.size()+" видимых исходов. Всего сохранено: "+store.getRoundCount()+".");
    refreshPanel();broadcastUpdate(-1);return;
   }
   if(current.equals(previous)){
    pendingSequence="";pendingSequenceFrames=0;
-   if(boardCount>=18)setStatus("Наблюдение активно: поле "+boardCount+"/36. Жду следующий раунд.");
+   if(boardCount>=30)setStatus("Наблюдение активно: поле "+boardCount+"/36. Жду следующий раунд.");
    return;
   }
   ArrayList<Integer> old=parseNumbers(previous);
@@ -242,11 +243,12 @@ public class ScreenOcrService extends Service {
   android.content.SharedPreferences p=getSharedPreferences("ringo70",0);
   String savedCoefficient=(coefficient==null||coefficient.isEmpty())?"-":coefficient;
   // SQLite stores every round and its 36-cell snapshot without a fixed 500-record cap.
-  store.addRound(n,savedCoefficient,latestBoardCsv);
+  String boardSnapshot=(latestBoardCount>=30 && System.currentTimeMillis()-latestBoardAt<=5000L)?latestBoardCsv:"";
+  store.addRound(n,savedCoefficient,boardSnapshot);
   long total=store.getRoundCount();
   p.edit().putString("tickerSequence",ticker).putString("tickerCoefficients",tickerCoefficients)
    .putInt("rounds",(int)Math.min(Integer.MAX_VALUE,total)).apply();
-  if(!latestBoardCsv.isEmpty()){appendBoardSample(n,latestBoardCsv);lastBoardSampleAt=System.currentTimeMillis();}
+  
   setStatus("Записан раунд №"+total+": "+n+" • коэффициент "+savedCoefficient);
   refreshPanel();broadcastUpdate(n);
  }
