@@ -113,6 +113,28 @@ public final class RingoStore extends SQLiteOpenHelper {
         return result;
     }
 
+    public synchronized String readBoardSamplesCsv(int limit) {
+        StringBuilder out = new StringBuilder();
+        Cursor c = getReadableDatabase().query(TABLE,
+            new String[]{"recorded_at", "outcome", "board_csv"},
+            "board_csv <> ''", null, null, null, "id DESC",
+            limit > 0 ? String.valueOf(limit) : null);
+        try {
+            while (c.moveToNext()) {
+                if (out.length() > 0) out.append('\\n');
+                out.append(c.getLong(0)).append('|')
+                   .append(c.getInt(1)).append('|')
+                   .append(c.getString(2));
+            }
+        } finally { c.close(); }
+        return out.toString();
+    }
+
+    public synchronized long getBoardSampleCount() {
+        return DatabaseUtils.longForQuery(getReadableDatabase(),
+            "SELECT COUNT(*) FROM " + TABLE + " WHERE board_csv <> ''", null);
+    }
+
     public synchronized long getRoundCount() {
         return DatabaseUtils.queryNumEntries(getReadableDatabase(), TABLE);
     }
