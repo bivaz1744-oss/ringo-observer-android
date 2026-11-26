@@ -24,7 +24,7 @@ public class ScreenOcrService extends Service {
  @Override public int onStartCommand(Intent intent,int flags,int startId){
   if(intent!=null&&ACTION_STOP.equals(intent.getAction())){stopSelf();return START_NOT_STICKY;}
   if(intent==null||!intent.hasExtra("data")){stopSelf();return START_NOT_STICKY;}
-  Notification n=Notification.Builder notificationBuilder = Build.VERSION.SDK_INT >= 26
+  Notification.Builder notificationBuilder = Build.VERSION.SDK_INT >= 26
    ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
   Notification n=notificationBuilder.setContentTitle("RINGO AI 7.7 — автоанализ")
    .setContentText("Наблюдение экрана и сохранение подтверждённых результатов.")
