@@ -159,6 +159,9 @@ public class ScreenOcrService extends Service {
   if(boardCount>=30){
    latestBoardCsv=joinStrings(Arrays.asList(board));latestBoardCount=boardCount;latestBoardAt=System.currentTimeMillis();
    p.edit().putString("boardLatest",latestBoardCsv).putInt("boardCells",boardCount).putLong("boardUpdatedAt",latestBoardAt).apply();
+  }else{
+   latestBoardCount=boardCount;latestBoardCsv="";
+   p.edit().putInt("boardCells",boardCount).remove("boardLatest").apply();
   }
   if(numbers.size()<5||numbers.size()>9){
    if(boardCount>=30)setStatus("Поле распознано: "+boardCount+"/36. Лента ожидает новый результат.");
@@ -172,7 +175,7 @@ public class ScreenOcrService extends Service {
    // Seed the visible strip only when this installation has no older saved rounds.
    store.seedFromVisibleStrip(numbers,coeffs);
    p.edit().putInt("rounds",(int)Math.min(Integer.MAX_VALUE,store.getRoundCount()))
-    .putString("tickerSequence",current).putString("tickerCoefficients",coeffCsv).apply();
+    .putString("tickerSequence",current).putString("tickerCoefficients",coeffCsv).commit();
    setStatus("Лента синхронизирована: "+numbers.size()+" видимых исходов. Всего сохранено: "+store.getRoundCount()+".");
    refreshPanel();broadcastUpdate(-1);return;
   }
@@ -247,7 +250,7 @@ public class ScreenOcrService extends Service {
   store.addRound(n,savedCoefficient,boardSnapshot);
   long total=store.getRoundCount();
   p.edit().putString("tickerSequence",ticker).putString("tickerCoefficients",tickerCoefficients)
-   .putInt("rounds",(int)Math.min(Integer.MAX_VALUE,total)).apply();
+   .putInt("rounds",(int)Math.min(Integer.MAX_VALUE,total)).commit();
   
   setStatus("Записан раунд №"+total+": "+n+" • коэффициент "+savedCoefficient);
   refreshPanel();broadcastUpdate(n);
