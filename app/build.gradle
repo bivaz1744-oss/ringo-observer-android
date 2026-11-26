@@ -4,7 +4,7 @@ android {
     namespace 'com.ringoai.sixone'
     compileSdk 35
     defaultConfig {
-        applicationId 'com.ringoai.sixone.v76'
+        applicationId 'com.ringoai.sixone.v77'
         minSdk 23
         targetSdk 35
         versionCode 77
