@@ -121,7 +121,7 @@ public final class RingoStore extends SQLiteOpenHelper {
             limit > 0 ? String.valueOf(limit) : null);
         try {
             while (c.moveToNext()) {
-                if (out.length() > 0) out.append('\\n');
+                if (out.length() > 0) out.append('\n');
                 out.append(c.getLong(0)).append('|')
                    .append(c.getInt(1)).append('|')
                    .append(c.getString(2));
